@@ -52,7 +52,7 @@ int main( int argc, char* argv[] )
         BIN_THRESH = 57;
 
     float EPSILON_APPROX = 6.0,
-          GAIN = 3.0,
+          GAIN = 1.5,
           BIAS = 0.0,
           MIN_CONTOUR_AREA = 1000.0,
           MIN_LEO_MATCHING_SCORE = 0.88 ,
