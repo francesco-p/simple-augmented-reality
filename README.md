@@ -1,6 +1,6 @@
 # Simple Augmented Reality System
 
-![alt text](./data/cv.gif "Logo Title Text 1")
+![System Demo](./data/cv.gif "System Demo")
 
 This is the fourth and last part of the projects that I had to develop for the Computer Vision course.
 
