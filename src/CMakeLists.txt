@@ -1,0 +1,19 @@
+file(GLOB_RECURSE CvLab_SRC_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
+include_directories( ${PROJECT_SOURCE_DIR}/include )
+
+add_executable(${CvLab_NAME} ${CvLab_SRC_FILES})
+
+target_link_libraries( ${CvLab_NAME} ${OpenCV_LIBS}  )
+
+INSTALL( TARGETS ${CvLab_NAME} DESTINATION bin PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE )
+
+
+add_custom_target(run
+    COMMAND ${CvLab_NAME}
+    DEPENDS ${CvLab_NAME}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+)
+
+# To autocomplete with vim syntastic
+set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
+
