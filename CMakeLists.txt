@@ -10,7 +10,7 @@ endif()
 
 set(CvLab_NAME "ar_project")
 set(CvLab_VERSION "0.1.0.${BUILD_NUMBER}")
-set(CvLab_BRIEF "${CV2017_NAME} - computer vision augmented reality")
+set(CvLab_BRIEF "${CV2017_NAME} - simple augmented reality system")
 
 
 # Setup default installation dir

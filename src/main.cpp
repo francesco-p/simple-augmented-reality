@@ -52,6 +52,8 @@ int main( int argc, char* argv[] )
         BIN_THRESH = 57;
 
     float EPSILON_APPROX = 6.0,
+          GAIN = 3.0,
+          BIAS = 0.0,
           MIN_CONTOUR_AREA = 1000.0,
           MIN_LEO_MATCHING_SCORE = 0.88 ,
           MIN_VAN_MATCHING_SCORE = 0.88 ;
@@ -89,7 +91,7 @@ int main( int argc, char* argv[] )
     // Start video source
     cv::VideoCapture vc;
 
-    // If you don't have a webcam, just put the path of a videofile
+    // If you don't have a webcam, just put a path to a valid video
     vc.open(0);
 
     if(vc.isOpened())
@@ -107,11 +109,12 @@ int main( int argc, char* argv[] )
                 cv::cvtColor( frame, frame, CV_RGB2GRAY );
 
                 // 2xGain
-                frame.convertTo(frame,-1,2,0); 
+                frame.convertTo(frame,-1,GAIN,BIAS); 
+                cv::imshow("GAIN filter", frame);
                 
                 // Threshold
-                //cv::threshold( frame, frame, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU );
-                cv::threshold( frame, frame, BIN_THRESH, 255, CV_THRESH_BINARY);
+                cv::threshold( frame, frame, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU );
+                //cv::threshold( frame, frame, BIN_THRESH, 255, CV_THRESH_BINARY);
                 
                 // Image processing
                 //cv::blur(frame,frame, cv::Size(3,3), cv::Point(-1,-1));
@@ -119,9 +122,6 @@ int main( int argc, char* argv[] )
 
                 // Find Contours
                 cv::findContours(frame, contours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
-
-                warped_painting = cv::Mat(frame.rows, frame.cols, CV_8UC3, cv::Scalar(0,0,0));
-                warped_mask = cv::Mat(frame.rows, frame.cols, CV_8U, cv::Scalar(255));
 
                 // Detected contours
                 for (size_t idx = 0; idx < contours.size(); ++idx)
@@ -183,6 +183,9 @@ int main( int argc, char* argv[] )
 
                                     if( van_score.back() > MIN_VAN_MATCHING_SCORE ||  leo_score.back() > MIN_LEO_MATCHING_SCORE )
                                     { 
+                                        warped_painting = cv::Mat(frame.rows, frame.cols, CV_8UC3, cv::Scalar(0,0,0));
+                                        warped_mask = cv::Mat(frame.rows, frame.cols, CV_8U, cv::Scalar(255));
+
                                         if ( leo_score.back() > van_score.back())
                                         {
                                             // [DEBUG]
