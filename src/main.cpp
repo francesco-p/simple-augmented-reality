@@ -1,7 +1,6 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <deque>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/videoio/videoio.hpp>
@@ -12,44 +11,34 @@
 #define VAN_MARK_PATH "data/1M.png"
 #define LEO_MARK_PATH "data/0M.png"
 
-int TOT_SCORE = 0;
 cv::Scalar RED = cv::Scalar(0, 0, 255);
 cv::Scalar BLUE = cv::Scalar(255, 0, 0);
 
-// Shift by one position and rotate the deque
-void dequeRotate(std::deque<cv::Point2f> &dq)
+// Rotate the vector: removes the last element and put it in front 
+std::vector<cv::Point2f> getRotatedVector( std::vector<cv::Point2f> vec)
 {
-    cv::Point2f aux = dq.back();     
-    dq.pop_back();
-    dq.push_front(aux);
-}
+    std::vector<cv::Point2f> aux; 
 
-void vectorToDeque( std::vector<cv::Point2f> vec, std::deque<cv::Point2f> &dq)
-{   
-    dq.clear();
+    cv::Point2f last = vec.back();
+    vec.pop_back();
+    aux.push_back(last);
 
     for( size_t i=0; i < vec.size(); ++i)
     {
-        dq.push_back(vec[i]);
+        aux.push_back(vec[i]);
     }
+
+    return aux;
 }
 
-void dequeToVector( std::deque<cv::Point2f> dq, std::vector<cv::Point2f> &vec)
-{   
-    vec.clear();
-
-    for( size_t i=0; i < dq.size(); ++i)
-    {
-        vec.push_back(dq[i]);
-    }
-}
-
-
+// Main program code
 int main( int argc, char* argv[] )
 {
     // Tunables
     int MIN_CONTOUR_SIZE = 100,
-        BIN_THRESH = 57;
+        GAUSS_SIGMA_X = 2,
+        GAUSS_SIGMA_Y = 2,
+        GAUSS_SIZE = 5;
 
     float EPSILON_APPROX = 6.0,
           GAIN = 1.5,
@@ -60,21 +49,22 @@ int main( int argc, char* argv[] )
         
     
     // Loading Markers and Isolation and blurring of L of Leo and V of Van 
+    cv::Rect first_letter_roi = cv::Rect(65, 150, 60, 54);
     cv::Mat van_marker = cv::imread(VAN_MARK_PATH, cv::IMREAD_GRAYSCALE);
     cv::Mat leo_marker = cv::imread(LEO_MARK_PATH, cv::IMREAD_GRAYSCALE);
-    cv::Rect first_letter_roi = cv::Rect(65, 150, 60, 54);
     cv::Mat L = leo_marker(first_letter_roi);
     cv::Mat V = van_marker(first_letter_roi);
-    cv::GaussianBlur(L,L, cv::Size(5,5),2,2);
-    cv::GaussianBlur(V,V, cv::Size(5,5),2,2);
-    // Marker mask for final warp
-    cv::Mat small_marker_mask = cv::Mat(van_marker.rows, van_marker.cols, CV_8U, cv::Scalar(255));
+    cv::GaussianBlur(L,L, cv::Size(GAUSS_SIZE,GAUSS_SIZE),GAUSS_SIGMA_X,GAUSS_SIGMA_Y);
+    cv::GaussianBlur(V,V, cv::Size(GAUSS_SIZE,GAUSS_SIZE),GAUSS_SIGMA_X,GAUSS_SIGMA_Y);
 
     // Loading paintings 
     cv::Mat van_painting = cv::imread(VAN_PNG_PATH);
     cv::Mat leo_painting = cv::imread(LEO_PNG_PATH);
 
-    // Marker reference points
+    // Marker mask for final warp
+    cv::Mat small_marker_mask = cv::Mat(van_marker.rows, van_marker.cols, CV_8U, cv::Scalar(255));
+
+    // Marker 4 reference points
     std::vector<cv::Point2f> mark_ref_points;
     mark_ref_points.push_back(cv::Point2f(0,0));
     mark_ref_points.push_back(cv::Point2f(leo_painting.cols-1,0));
@@ -84,14 +74,13 @@ int main( int argc, char* argv[] )
     // Aux variables
     cv::Mat frame, orig_frame, contour_frame,warped_painting, warped_mask, h, detected_marker, detected_L, detected_V ;
     std::vector<std::vector<cv::Point> > contours;
-    std::vector<cv::Point2f>  approx_cont, detected_corners_vec;
-    std::deque<cv::Point2f> detected_corners_dq;
+    std::vector<cv::Point2f>  approx_cont, detected_corners;
     std::vector<float> leo_score, van_score;
 
     // Start video source
     cv::VideoCapture vc;
 
-    // If you don't have a webcam, just put a path to a valid video
+    // If you don't have a webcam just put the path to a valid video which shows the markers
     vc.open(0);
 
     if(vc.isOpened())
@@ -104,33 +93,27 @@ int main( int argc, char* argv[] )
 
             if (!frame.empty())
             {
-
                 // Greyscale
                 cv::cvtColor( frame, frame, CV_RGB2GRAY );
 
-                // 2xGain
+                // Gain filter
                 frame.convertTo(frame,-1,GAIN,BIAS); 
-                cv::imshow("GAIN filter", frame);
+                // [DEBUG]
+                //cv::imshow("GAIN filter", frame);
                 
                 // Threshold
                 cv::threshold( frame, frame, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU );
-                //cv::threshold( frame, frame, BIN_THRESH, 255, CV_THRESH_BINARY);
                 
-                // Image processing
-                //cv::blur(frame,frame, cv::Size(3,3), cv::Point(-1,-1));
-                //cv::GaussianBlur(frame,frame, cv::Size(3,3),2,2);
-
                 // Find Contours
                 cv::findContours(frame, contours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
 
                 // Detected contours
                 for (size_t idx = 0; idx < contours.size(); ++idx)
                 {
-
-                    // Filtering by pixel number
+                    // Filtering contours by pixel number
                     if (contours[idx].size() > MIN_CONTOUR_SIZE)
                     {
-                        // Shape approximation
+                        // Contour shape approximation through RDP-algorithm
                         cv::approxPolyDP( contours[idx], approx_cont, EPSILON_APPROX ,true);
 
                         // Square shape filtering
@@ -139,81 +122,74 @@ int main( int argc, char* argv[] )
                             // [DEBUG] We are sure it is a square so we draw the detected contour
                             cv::drawContours(contour_frame, contours, idx, RED);
 
-                            // Corners
-                            for (int j = 0; j < approx_cont.size(); j+=4)
+                            // [DEBUG] Draw a circle over the corners
+                            cv::circle(contour_frame, approx_cont[0], 10.0, BLUE);
+                            cv::circle(contour_frame, approx_cont[1], 10.0, BLUE);
+                            cv::circle(contour_frame, approx_cont[2], 10.0, BLUE);
+                            cv::circle(contour_frame, approx_cont[3], 10.0, BLUE);
+
+                            // [DEBUG]
+                            //cv::imshow("Detected Squares", contour_frame);
+
+                            // Square corners
+                            detected_corners.clear();
+
+                            // Save corner points of the detected square
+                            detected_corners.push_back(approx_cont[0]);
+                            detected_corners.push_back(approx_cont[1]);
+                            detected_corners.push_back(approx_cont[2]);
+                            detected_corners.push_back(approx_cont[3]);
+
+                            // For each possible orientation
+                            for( int orientation = 0; orientation <4; ++orientation)
                             {
-                                detected_corners_vec.clear();
-                                detected_corners_dq.clear();
+                                // Marker matching 
+                                h = cv::getPerspectiveTransform(detected_corners, mark_ref_points);
+                                cv::warpPerspective(frame, detected_marker, h, warped_painting.size());
 
-                                // [DEBUG] Draw corners
-                                cv::circle(contour_frame, approx_cont[j], 10.0, BLUE);
-                                cv::circle(contour_frame, approx_cont[j+1], 10.0, BLUE);
-                                cv::circle(contour_frame, approx_cont[j+2], 10.0, BLUE);
-                                cv::circle(contour_frame, approx_cont[j+3], 10.0, BLUE);
+                                // Filter only the first letter of the marker 
+                                detected_L = detected_marker(first_letter_roi);
+                                detected_V = detected_marker(first_letter_roi);
+                                // [DEBUG]
+                                //cv::imshow("Detected Marker", detected_marker);
+                                
+                                // Template matching
+                                cv::matchTemplate(detected_L, L, leo_score, cv::TM_CCORR_NORMED);
+                                cv::matchTemplate(detected_V, V, van_score, cv::TM_CCORR_NORMED);
 
-                                // Save corner points
-                                detected_corners_vec.push_back(approx_cont[j]);
-                                detected_corners_vec.push_back(approx_cont[j+1]);
-                                detected_corners_vec.push_back(approx_cont[j+2]);
-                                detected_corners_vec.push_back(approx_cont[j+3]);
+                                // If it matches one of the two markers, then display the correct one
+                                if( van_score.back() > MIN_VAN_MATCHING_SCORE ||  leo_score.back() > MIN_LEO_MATCHING_SCORE )
+                                { 
+                                    // Calculate the transformation matrix
+                                    h = cv::getPerspectiveTransform(mark_ref_points, detected_corners);
 
-                                vectorToDeque(detected_corners_vec, detected_corners_dq);
+                                    warped_painting = cv::Mat(frame.rows, frame.cols, CV_8UC3, cv::Scalar(0,0,0));
+                                    warped_mask = cv::Mat(frame.rows, frame.cols, CV_8U, cv::Scalar(255));
 
-                                // For each orientation
-                                for( int orientation = 0; orientation <4; ++orientation)
-                                {
-                                    // Marker matching 
-                                    h = cv::getPerspectiveTransform(detected_corners_vec, mark_ref_points);
-                                    cv::warpPerspective(frame, detected_marker, h, warped_painting.size());
-
-                                    // Which marker
-                                    detected_L = detected_marker(first_letter_roi);
-                                    detected_V = detected_marker(first_letter_roi);
-                                    // [DEBUG]
-                                    //cv::imshow("Detected Marker", detected_marker);
-                                    
-                                    // Template matching
-                                    cv::matchTemplate(detected_L, L, leo_score, cv::TM_CCORR_NORMED);
-                                    //std::cout <<  "LEO " << leo_score.back() << std::endl;
-                                    cv::matchTemplate(detected_V, V, van_score, cv::TM_CCORR_NORMED);
-                                    //std::cout <<  "VAN " << van_score.back() << std::endl;
-
-                                    h = cv::getPerspectiveTransform(mark_ref_points, detected_corners_vec);
-                                    //h = cv::findHomography(mark_ref_points, detected_corners_vec, cv::RANSAC);
-
-                                    if( van_score.back() > MIN_VAN_MATCHING_SCORE ||  leo_score.back() > MIN_LEO_MATCHING_SCORE )
-                                    { 
-                                        warped_painting = cv::Mat(frame.rows, frame.cols, CV_8UC3, cv::Scalar(0,0,0));
-                                        warped_mask = cv::Mat(frame.rows, frame.cols, CV_8U, cv::Scalar(255));
-
-                                        if ( leo_score.back() > van_score.back())
-                                        {
-                                            // [DEBUG]
-                                            cv::imshow("L", detected_L);
-
-                                            cv::warpPerspective(leo_painting, warped_painting, h, warped_painting.size());
-                                        }
-                                        else
-                                        {
-                                            // [DEBUG]
-                                            cv::imshow("V", detected_V);
-
-                                            cv::warpPerspective(van_painting, warped_painting, h, warped_painting.size());
-                                        }
-
-                                        cv::warpPerspective(small_marker_mask, warped_mask, h, warped_mask.size());
-                                        warped_painting.copyTo(orig_frame, warped_mask);
-
+                                    // L or V?
+                                    if ( leo_score.back() > van_score.back())
+                                    {
                                         // [DEBUG]
-                                        //TOT_SCORE++;
-
-                                        break;
+                                        //cv::imshow("L", detected_L);
+                                        cv::warpPerspective(leo_painting, warped_painting, h, warped_painting.size());
+                                    }
+                                    else
+                                    {
+                                        // [DEBUG]
+                                        //cv::imshow("V", detected_V);
+                                        cv::warpPerspective(van_painting, warped_painting, h, warped_painting.size());
                                     }
 
-                                    dequeRotate(detected_corners_dq);
-                                    dequeToVector(detected_corners_dq, detected_corners_vec);
-                                    //cv::waitKey(0);
+                                    // Warp the mask an copy the warped image
+                                    cv::warpPerspective(small_marker_mask, warped_mask, h, warped_mask.size());
+                                    warped_painting.copyTo(orig_frame, warped_mask);
+
+                                    // Stop trying every orientation and process another square
+                                    break;
                                 }
+
+                                // Try another orientation
+                                detected_corners = getRotatedVector(detected_corners);
                             }
                         }
                     }
@@ -222,20 +198,18 @@ int main( int argc, char* argv[] )
                 cv::imshow( "Augmented Reality", orig_frame);
 
                 // [DEBUG]
-                cv::imshow( "Binary image", frame);
-                cv::imshow("Detected Squares", contour_frame);
+                //cv::imshow( "Binary image", frame);
+                //cv::imshow("Detected Squares", contour_frame);
 
                 cv::waitKey( 1 );
             }
             else
             {
+                // No more frames, exit.
                 break;
             }
         }
     
-    // [DEBUG]
-    //std::cout <<  "Tot score: " << TOT_SCORE << std::endl;
-
     return 0;
 
     }
